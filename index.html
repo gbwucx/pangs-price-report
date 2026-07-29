@@ -199,8 +199,32 @@
         <select id="seriesSel" style="min-width:320px"></select>
       </div>
     </div>
+    <div class="controls" style="align-items:flex-end;flex-wrap:wrap;gap:10px;margin-top:8px">
+      <div style="display:flex;flex-direction:column;gap:4px">
+        <label style="font-size:12.5px;color:var(--muted)">时间范围</label>
+        <div class="seg" id="rangeSeg">
+          <button data-v="ALL" class="active">全部</button>
+          <button data-v="2Y">近两年</button>
+          <button data-v="1Y">近一年</button>
+          <button data-v="6M">近半年</button>
+          <button data-v="3M">近三个月</button>
+          <button data-v="1M">近一个月</button>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:4px">
+        <label style="font-size:12.5px;color:var(--muted)">自定义区间</label>
+        <div style="display:flex;gap:6px;align-items:center">
+          <input type="date" id="rangeStart" style="min-width:130px;padding:7px 9px">
+          <span style="color:var(--muted)">至</span>
+          <input type="date" id="rangeEnd" style="min-width:130px;padding:7px 9px">
+          <button id="rangeApply" style="padding:7px 12px;border:1px solid var(--line);border-radius:8px;background:#fff;cursor:pointer;font:inherit;color:var(--brand)">应用</button>
+          <button id="rangeReset" style="padding:7px 12px;border:1px solid var(--line);border-radius:8px;background:#fff;cursor:pointer;font:inherit;color:var(--muted)">重置</button>
+        </div>
+      </div>
+    </div>
     <div class="chart-box" style="height:380px"><canvas id="singleChart"></canvas></div>
     <div id="prodInfo" class="spec-row" style="margin-top:10px"></div>
+    <div id="rangeInfo" class="legend" style="margin-top:6px"></div>
   </section>
 
   <section>
@@ -551,6 +575,53 @@ const groupList  = D.group_list || [];                // 全部产品名
 const groups     = D.groups || {};                    // product_short -> [all_series indices]
 let singleChart = null;
 
+// ---- 时间范围筛选 ----
+const rangeSeg   = document.getElementById('rangeSeg');
+const rangeStart = document.getElementById('rangeStart');
+const rangeEnd   = document.getElementById('rangeEnd');
+const rangeApply = document.getElementById('rangeApply');
+const rangeReset = document.getElementById('rangeReset');
+let rangeMode = 'ALL'; // ALL,2Y,1Y,6M,3M,1M,CUSTOM
+let customStart = '', customEnd = '';
+
+function addMonths(dateStr, months) {
+  const d = new Date(dateStr + 'T00:00:00');
+  d.setMonth(d.getMonth() + months);
+  return d.toISOString().slice(0,10);
+}
+function todayStr() { return new Date().toISOString().slice(0,10); }
+
+function getRangeBounds() {
+  const end = todayStr();
+  switch(rangeMode) {
+    case '2Y': return { start: addMonths(end, -24), end };
+    case '1Y': return { start: addMonths(end, -12), end };
+    case '6M': return { start: addMonths(end, -6),  end };
+    case '3M': return { start: addMonths(end, -3),  end };
+    case '1M': return { start: addMonths(end, -1),  end };
+    case 'CUSTOM': return { start: customStart, end: customEnd };
+    default: return { start: '', end: '' };
+  }
+}
+
+function filterPointsByRange(points) {
+  const { start, end } = getRangeBounds();
+  if (!start && !end) return points;
+  return points.filter(p => {
+    const d = p.d;
+    if (start && d < start) return false;
+    if (end && d > end) return false;
+    return true;
+  });
+}
+
+function updateRangeUI() {
+  rangeSeg.querySelectorAll('button').forEach(b => b.classList.toggle('active', b.dataset.v === rangeMode));
+  const { start, end } = getRangeBounds();
+  rangeStart.value = start || '';
+  rangeEnd.value = end || '';
+}
+
 // 产品名 -> 英文/缩写的搜索索引（同时吸收 search_index 里的别名，如 MA/MMA）
 const si = D.search_index || {};
 const siAliases = {};
@@ -617,9 +688,18 @@ function renderSingle() {
   if (!s || !s.points || s.points.length === 0) {
     if (singleChart) singleChart.destroy();
     document.getElementById('prodInfo').innerHTML = '<span class="spec-pill">该序列无价格数据</span>';
+    document.getElementById('rangeInfo').innerHTML = '';
     return;
   }
-  // info panel
+  const filtered = filterPointsByRange(s.points);
+  const range = getRangeBounds();
+  const showRange = rangeMode !== 'ALL';
+  const rangeText = showRange
+    ? `当前展示：${filtered.length} 个数据点（${range.start || '最早'} 至 ${range.end || '今天'}）`
+    : `当前展示：全部 ${filtered.length} 个数据点`;
+  document.getElementById('rangeInfo').innerHTML = `<span class="pill">${rangeText}</span>`;
+
+  // info panel（始终展示最新全局信息，不受时间范围过滤影响）
   const specs = [];
   if (s.delivery) specs.push('交货:' + s.delivery);
   if (s.packaging) specs.push('包装:' + s.packaging);
@@ -638,9 +718,9 @@ function renderSingle() {
   if (singleChart) singleChart.destroy();
   singleChart = new Chart(document.getElementById('singleChart'), {
     type: 'line',
-    data: { labels: s.points.map(p => p.d), datasets: [{
+    data: { labels: filtered.map(p => p.d), datasets: [{
       label: `${s.product_short} · ${s.supplier}`,
-      data: s.points.map(p => p.p),
+      data: filtered.map(p => p.p),
       borderColor: s.currency === 'USD' ? '#2c5cc5' : '#e8590c',
       backgroundColor: 'rgba(44,92,197,.08)',
       borderWidth: 2, pointRadius: 2, tension: .25, fill: true
@@ -676,9 +756,31 @@ prodList.addEventListener('change', function() {
 });
 seriesSel.addEventListener('change', renderSingle);
 
+// 时间范围事件
+rangeSeg.addEventListener('click', function(e) {
+  if (e.target.tagName !== 'BUTTON') return;
+  rangeMode = e.target.dataset.v;
+  updateRangeUI();
+  renderSingle();
+});
+rangeApply.addEventListener('click', function() {
+  const s = rangeStart.value, e = rangeEnd.value;
+  if (s && e && s > e) { alert('开始日期不能晚于结束日期'); return; }
+  if (!s && !e) { rangeMode = 'ALL'; }
+  else { rangeMode = 'CUSTOM'; customStart = s; customEnd = e; }
+  updateRangeUI();
+  renderSingle();
+});
+rangeReset.addEventListener('click', function() {
+  rangeMode = 'ALL'; customStart = ''; customEnd = '';
+  updateRangeUI();
+  renderSingle();
+});
+
 // init: default to first active product if any, else first product
 (function init() {
   fillProducts('');
+  updateRangeUI();
   const activeProducts = groupList.filter(p => groups[p].some(i => allSeries[i].last_date === M.last_file_date));
   const defaultProduct = activeProducts[0] || groupList[0];
   if (defaultProduct) {
