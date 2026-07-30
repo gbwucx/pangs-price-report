@@ -646,7 +646,7 @@ function normPkg(pkg) {
   const CANON = { '桶装':'DRUM','桶':'DRUM','barrel':'DRUM','drum':'DRUM','drums':'DRUM',
                   '袋':'BAG','bag':'BAG','sack':'BAG',
                   '散水':'BULK','bulk':'BULK',
-                  '液袋':'LIQUIDBAG','flexitank':'LIQUIDBAG','ibc':'IBC' };
+                  '液袋':'LIQUIDBAG','flexitank':'LIQUIDBAG','flexibag':'LIQUIDBAG','ibc':'IBC' };
   const qm = s.match(/^(\d+(?:\.\d+)?)/);
   if (!qm) return CANON[s] || s.toUpperCase();          // 无数字：散水/液袋/TANK 等
   const qty = qm[1];
