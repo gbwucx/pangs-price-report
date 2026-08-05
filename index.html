@@ -374,10 +374,12 @@ document.getElementById('method').innerHTML =
     const allDates = [...new Set(entries.map(e => e.date))].sort().reverse();
     const last3 = allDates.slice(0, 3);
 
-    // 按 供应商×币种×规范化包装 分组（与管线序列身份键一致：同一产品+供应商+币种+包装规格=同一行）
+    // 按 供应商×币种×规范化包装×形态(片/粒/液等) 分组（与管线序列身份键一致：同一产品+供应商+币种+包装规格+形态=同一行）
+    // 注：氢氧化钠等存在片碱/粒碱/液碱多种形态实为不同实质货，必须按形态分独立行；通过 product_full 首词（片碱/粒碱/液碱）区分。
     const byGroup = {};
     for (const e of entries) {
-      const key = e.supplier + '|||' + e.currency + '|||' + (normPkg(e.packaging) || '—');
+      const formTok = ((e.product_full || e.description || '').match(/^(片碱|粒碱|液碱|无水|一水|二水|粉状|针状|珠状|块状)/) || [,''])[1];
+      const key = e.supplier + '|||' + e.currency + '|||' + (normPkg(e.packaging) || '—') + '|||' + formTok;
       if (!byGroup[key]) {
         byGroup[key] = {
           supplier: e.supplier,
