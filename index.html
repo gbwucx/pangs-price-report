@@ -377,8 +377,30 @@ document.getElementById('method').innerHTML =
     // 按 供应商×币种×规范化包装×形态(片/粒/液等) 分组（与管线序列身份键一致：同一产品+供应商+币种+包装规格+形态=同一行）
     // 注：氢氧化钠等存在片碱/粒碱/液碱多种形态实为不同实质货，必须按形态分独立行；通过 product_full 首词（片碱/粒碱/液碱）区分。
     const byGroup = {};
+    // 形态标签：先查 product_full/description 起头，再回退到 canonical_name/aliases 是否含形态词。
+    // 注意：氢氧化钠片碱/粒碱/液碱是不同实质货必须分；柠檬酸/柠檬酸钠等"无水/一水/二水"已通过独立产品名拆分序列，
+    //    但历史录入 product 名可能省略形态词(如"柠檬酸钠"省略"二水"),需用 aliases/canonical 回退匹配。
+    const formTokens = ['片碱','粒碱','液碱','无水','一水','二水','粉状','针状','珠状','块状'];
+    const _extractFormTok = (e) => {
+      const blobs = [
+        e.product_full || '',
+        e.description || '',
+        e.canonical_name || '',
+        e.product_name || '',
+        (e.aliases || []).join(' / ')
+      ];
+      const head = blobs[0] || '';
+      const headMatch = head.match(new RegExp('^(?:' + formTokens.join('|') + ')'));
+      if (headMatch) return headMatch[0];
+      for (const b of blobs) {
+        for (const tok of formTokens) {
+          if (b.indexOf(tok) >= 0) return tok;
+        }
+      }
+      return '';
+    };
     for (const e of entries) {
-      const formTok = ((e.product_full || e.description || '').match(/^(片碱|粒碱|液碱|无水|一水|二水|粉状|针状|珠状|块状)/) || [,''])[1];
+      const formTok = _extractFormTok(e);
       const key = e.supplier + '|||' + e.currency + '|||' + (normPkg(e.packaging) || '—') + '|||' + formTok;
       if (!byGroup[key]) {
         byGroup[key] = {
