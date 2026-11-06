@@ -490,7 +490,18 @@ document.getElementById('method').innerHTML =
     html += `<th>HS编码</th><th>退税率</th><th>危险品等级</th><th>描述</th><th>备注</th><th>负责人</th>
       </tr></thead><tbody>`;
 
-    const groups = Object.values(byGroup).sort((a,b) => a.supplier.localeCompare(b.supplier) || a.currency.localeCompare(b.currency));
+    // 组内同供应商同币种按「本期最新价」升序排列：散水/净水基准价理应排最前，其次 IBC、桶装
+    for (const g of Object.values(byGroup)) {
+      const ds = Object.keys(g.weeks).sort();
+      const lastD = ds.length ? ds[ds.length - 1] : null;
+      const lw = lastD ? g.weeks[lastD] : null;
+      g.last_price = lw && lw.price != null ? lw.price : null;
+    }
+    const groups = Object.values(byGroup).sort((a,b) =>
+      a.supplier.localeCompare(b.supplier) ||
+      a.currency.localeCompare(b.currency) ||
+      ((a.last_price == null ? 1e18 : a.last_price) - (b.last_price == null ? 1e18 : b.last_price)) ||
+      String(a.packaging).localeCompare(String(b.packaging)));
 
     for (const grp of groups) {
       html += `<tr>
